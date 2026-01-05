@@ -5,6 +5,9 @@ import dotenv
 import logging
 import openai
 import tiktoken
+from pydantic import BaseModel, Field, ValidationError
+from typing import Literal, Optional
+import json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,7 +54,7 @@ def classify_message(message_text):
     return response.choices[0].message.content
 
 input_path = "data/Sample Messages.txt"
-output_path = "output/classified_messages.xlsx"
+output_path = "output/classified_messages.csv"
 
 results = []
 
@@ -67,7 +70,7 @@ results = []
 
 #     df = pd.DataFrame(results)
 #     os.makedirs("output", exist_ok=True)
-#     df.to_excel(output_path, index=False)
+#     df.to_csv(output_path, index=False)
 #     print(f"Success! Results saved to {output_path}")
 # else:
 #     print("Error: Input file not found.")
@@ -208,5 +211,58 @@ long_spam = "HELP " * 200
 clean_message = budget_keeper_gatekeeper(long_spam)
 print(f"Gatekeeper Result: {clean_message}")
 
+class CrisisEvent(BaseModel):
+    district: Literal["Colombo", "Gampaha", "Kandy", "Kalutara", "Galle", "Kegalle", "Ratnapura", "Matara", "Badulla", "Nuwara Eliya"]
+    flood_level_meters: Optional[float] = None
+    victim_count: int = Field(default=0)
+    main_need: str
+    status: Literal["Critical", "Warning", "Stable"]
+
+def extract_structured_data(text):
+    """Refined json_extract.v1 to match CrisisEvent schema exactly."""
+    extract_prompt = f"""
+    Extract data into JSON. You MUST use these exact keys:
+    - "district": Must be one of [Colombo, Gampaha, Kandy, Kalutara, Galle, Kegalle, Ratnapura, Matara, Badulla, Nuwara Eliya]
+    - "flood_level_meters": float or null
+    - "victim_count": integer
+    - "main_need": string (if none, put "None")
+    - "status": One of [Critical, Warning, Stable]
+    
+    News Item: "{text}"
+    
+    Respond ONLY with the raw JSON object.
+    """
+    
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": extract_prompt}],
+        response_format={ "type": "json_object" },
+        temperature=0
+    )
+    return response.choices[0].message.content
+
+def run_news_pipeline():
+    news_path = "data/News Feed.txt"
+    valid_events = []
+
+    with open(news_path, "r") as f:
+        lines = [line.strip() for line in f.readlines() if line.strip()]
+
+    print(f"Starting Extraction Pipeline for {len(lines)} items...")
+
+    for line in lines:
+        try:
+            raw_json = extract_structured_data(line)
+            event = CrisisEvent.model_validate_json(raw_json)
+            valid_events.append(event.model_dump())
+        except Exception as e:
+            print(f"!!! Skipping invalid data: {line[:30]}... | Error: {e}")
+
+    print(f"Extracted {len(valid_events)} valid events")
+    df = pd.DataFrame(valid_events)
+    df.to_csv("output/flood_report.csv", index=False)
+    print("Pipeline Complete! Structured report saved to output/flood_report.csv")
+
 #run_stability_experiment()
 #run_logistics_commander()
+run_news_pipeline()
