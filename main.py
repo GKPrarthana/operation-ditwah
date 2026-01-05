@@ -4,6 +4,7 @@ from openai import OpenAI
 import dotenv
 import logging
 import openai
+import tiktoken
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,6 +49,28 @@ def classify_message(message_text):
         temperature=0
     )
     return response.choices[0].message.content
+
+input_path = "data/Sample Messages.txt"
+output_path = "output/classified_messages.xlsx"
+
+results = []
+
+# if os.path.exists(input_path):
+#     with open(input_path, "r") as f:
+#         messages = [line.strip() for line in f.readlines() if line.strip()]
+        
+#     print(f"Processing {len(messages)} messages...")
+    
+#     for msg in messages:
+#         classification = classify_message(msg)
+#         results.append({"Raw Message": msg, "Classification": classification})
+
+#     df = pd.DataFrame(results)
+#     os.makedirs("output", exist_ok=True)
+#     df.to_excel(output_path, index=False)
+#     print(f"Success! Results saved to {output_path}")
+# else:
+#     print("Error: Input file not found.")
 
 def run_stability_test(scenario_text, temp):
     """
@@ -162,27 +185,28 @@ def run_logistics_commander():
     print("\n--- STEP B: OPTIMAL ROUTE (ToT) ---")
     print(strategy_response.choices[0].message.content)
 
-input_path = "data/Sample Messages.txt"
-output_path = "output/classified_messages.xlsx"
+def count_tokens(text, model="gpt-4o-mini"):
+    """Counts the number of tokens in a string."""
+    encoding = tiktoken.encoding_for_model(model)
+    return len(encoding.encode(text))
 
-results = []
-
-# if os.path.exists(input_path):
-#     with open(input_path, "r") as f:
-#         messages = [line.strip() for line in f.readlines() if line.strip()]
-        
-#     print(f"Processing {len(messages)} messages...")
+def budget_keeper_gatekeeper(message_text):
+    """
+    Checks if a message is too long. 
+    If > 150 tokens, it truncates and marks as BLOCKED/TRUNCATED.
+    """
+    token_count = count_tokens(message_text)
     
-#     for msg in messages:
-#         classification = classify_message(msg)
-#         results.append({"Raw Message": msg, "Classification": classification})
+    if token_count > 150:
+        truncated_text = message_text[:100] + "..." 
+        print(f"!!! [BLOCKED/TRUNCATED] Message is {token_count} tokens. Reducing costs.")
+        return f"TRUNCATED SPAM: {truncated_text}"
+    
+    return message_text
 
-#     df = pd.DataFrame(results)
-#     os.makedirs("output", exist_ok=True)
-#     df.to_excel(output_path, index=False)
-#     print(f"Success! Results saved to {output_path}")
-# else:
-#     print("Error: Input file not found.")
+long_spam = "HELP " * 200
+clean_message = budget_keeper_gatekeeper(long_spam)
+print(f"Gatekeeper Result: {clean_message}")
 
 #run_stability_experiment()
-run_logistics_commander()
+#run_logistics_commander()
