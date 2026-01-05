@@ -105,26 +105,84 @@ def run_stability_experiment():
         if safe_output[:100] != chaos_outputs[0][:100]:
             print("  DIFFERENCE between Safe and Chaos modes")
 
+def run_logistics_commander():
+    """
+    Combines CoT scoring and ToT routing to find the optimal rescue path.
+    """
+    with open("data/Incidents.txt", "r") as f:
+        incidents_data = f.read()
+
+    scoring_prompt = f"""
+    Analyze these incidents row by row and assign a Priority Score (1-10):
+    Rules:
+    - Base Score: 5
+    - +2 if Age > 60 or < 5 [cite: 188]
+    - +3 if Need is "Rescue" (Life Threat) [cite: 189]
+    - +1 if Need is "Insulin/Medicine" [cite: 190]
+    
+    Incidents:
+    {incidents_data}
+    
+    Output the ID and the Final Score for each.
+    """
+    
+    scores_response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": scoring_prompt}],
+        temperature=0
+    )
+    scores_output = scores_response.choices[0].message.content
+    print("\n--- STEP A: PRIORITY SCORES ---")
+    print(scores_output)
+
+    strategy_prompt = f"""
+    Act as a Logistics Commander. We have ONE boat at Ragama.
+    
+    SCORING DATA:
+    {scores_output}
+    
+    CONSTRAINTS:
+    - Ragama to Ja-Ela: 10 mins
+    - Ja-Ela to Gampaha: 40 mins
+    - Ragama to Gampaha: 50 mins (via Ja-Ela)
+    
+    TASK: Explore 3 branches to maximize priority score saved in shortest time[cite: 105]:
+    Branch 1: Highest Score First (Greedy) 
+    Branch 2: Closest First (Speed) 
+    Branch 3: Furthest First (Logistics) 
+    
+    Select the optimal route and justify it.
+    """
+    
+    strategy_response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": strategy_prompt}],
+        temperature=0
+    )
+    print("\n--- STEP B: OPTIMAL ROUTE (ToT) ---")
+    print(strategy_response.choices[0].message.content)
+
 input_path = "data/Sample Messages.txt"
 output_path = "output/classified_messages.xlsx"
 
 results = []
 
-if os.path.exists(input_path):
-    with open(input_path, "r") as f:
-        messages = [line.strip() for line in f.readlines() if line.strip()]
+# if os.path.exists(input_path):
+#     with open(input_path, "r") as f:
+#         messages = [line.strip() for line in f.readlines() if line.strip()]
         
-    print(f"Processing {len(messages)} messages...")
+#     print(f"Processing {len(messages)} messages...")
     
-    for msg in messages:
-        classification = classify_message(msg)
-        results.append({"Raw Message": msg, "Classification": classification})
+#     for msg in messages:
+#         classification = classify_message(msg)
+#         results.append({"Raw Message": msg, "Classification": classification})
 
-    df = pd.DataFrame(results)
-    os.makedirs("output", exist_ok=True)
-    df.to_excel(output_path, index=False)
-    print(f"Success! Results saved to {output_path}")
-else:
-    print("Error: Input file not found.")
+#     df = pd.DataFrame(results)
+#     os.makedirs("output", exist_ok=True)
+#     df.to_excel(output_path, index=False)
+#     print(f"Success! Results saved to {output_path}")
+# else:
+#     print("Error: Input file not found.")
 
-run_stability_experiment()
+#run_stability_experiment()
+run_logistics_commander()
